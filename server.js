@@ -272,5 +272,5 @@ app.get("/api/sources", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`pi-view running at http://localhost:${PORT}`);
+  console.log(`agent-view running at http://localhost:${PORT}`);
 });
