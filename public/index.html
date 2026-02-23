@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pi-view</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg-card: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #00aaff;
+      --accent2: #00ffff;
+      --green: #00ff00;
+      --orange: #ffaa00;
+      --pink: #ff00ff;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+
+    header .left h1 {
+      font-size: 28px;
+      color: var(--accent);
+    }
+
+    header .left h1 span { color: var(--text-muted); font-weight: 300; }
+    header .left .subtitle { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+
+    .source-switcher {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .source-switcher button {
+      background: var(--bg-card);
+      color: var(--text-muted);
+      border: none;
+      padding: 10px 24px;
+      min-width: 120px;
+      font-size: 14px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+
+    .source-switcher button:not(:last-child) {
+      border-right: 1px solid var(--border);
+    }
+
+    .source-switcher button.active {
+      background: var(--accent);
+      color: #000;
+      font-weight: 600;
+    }
+
+    .source-switcher button:hover:not(.active) {
+      background: #21262d;
+      color: var(--text);
+    }
+
+    .cost-note {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-style: italic;
+      margin-bottom: 16px;
+      min-height: 1.4em;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .summary-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .summary-card .value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .summary-card .label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 4px;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .chart-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+    }
+
+    .chart-card.full-width { grid-column: 1 / -1; }
+
+    .chart-card h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .chart-container { position: relative; width: 100%; }
+
+    .heatmap {
+      display: flex;
+      gap: 3px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .heatmap-week {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .heatmap-cell {
+      width: 14px;
+      height: 14px;
+      border-radius: 2px;
+      background: #21262d;
+    }
+
+    .heatmap-cell[data-level="1"] { background: #0e4429; }
+    .heatmap-cell[data-level="2"] { background: #006d32; }
+    .heatmap-cell[data-level="3"] { background: #26a641; }
+    .heatmap-cell[data-level="4"] { background: #39d353; }
+
+    .heatmap-cell:hover {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
+
+    .heatmap-labels {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      margin-right: 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .heatmap-labels span { height: 14px; line-height: 14px; }
+
+    .heatmap-legend {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      justify-content: flex-end;
+    }
+
+    .heatmap-legend .heatmap-cell { width: 12px; height: 12px; }
+
+    .tooltip {
+      position: fixed;
+      background: #1c2128;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--text);
+      pointer-events: none;
+      z-index: 100;
+      display: none;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 900px) {
+      .charts-grid { grid-template-columns: 1fr; }
+      header { flex-direction: column; gap: 16px; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="left">
+      <h1>π <span>pi-view</span></h1>
+      <p class="subtitle">Usage insights for your coding agents</p>
+    </div>
+    <div class="right">
+      <div class="source-switcher" id="switcher"></div>
+    </div>
+  </header>
+
+  <div class="cost-note" id="costNote"></div>
+  <div class="summary-grid" id="summary"></div>
+
+  <div class="charts-grid">
+    <div class="chart-card full-width">
+      <h2>Activity</h2>
+      <div id="heatmap-container"></div>
+    </div>
+
+    <div class="chart-card full-width">
+      <h2>Punchcard — user messages by day &amp; hour</h2>
+      <div class="chart-container"><canvas id="punchcard"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Cost per project</h2>
+      <div class="chart-container"><canvas id="projectCost"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Messages per project</h2>
+      <div class="chart-container"><canvas id="projectMessages"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Cumulative cost</h2>
+      <div class="chart-container"><canvas id="cumulativeCost"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Daily token usage</h2>
+      <div class="chart-container"><canvas id="dailyTokens"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Models used</h2>
+      <div class="chart-container"><canvas id="modelUsage"></canvas></div>
+    </div>
+
+    <div class="chart-card" id="thinkingCard">
+      <h2>Thinking levels</h2>
+      <div class="chart-container"><canvas id="thinkingUsage"></canvas></div>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const CHART_IDS = ['punchcard', 'projectCost', 'projectMessages', 'cumulativeCost', 'dailyTokens', 'modelUsage', 'thinkingUsage'];
+    const charts = {};
+
+    Chart.defaults.color = '#8b949e';
+    Chart.defaults.borderColor = '#30363d';
+
+    let currentSource = 'pi';
+
+    async function init() {
+      const sources = await (await fetch('/api/sources')).json();
+      renderSwitcher(sources);
+      loadSource(sources[0]?.id || 'pi');
+    }
+
+    function renderSwitcher(sources) {
+      const el = document.getElementById('switcher');
+      el.innerHTML = sources.map(s =>
+        `<button data-source="${s.id}">${s.label}</button>`
+      ).join('');
+      el.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-source]');
+        if (btn) loadSource(btn.dataset.source);
+      });
+    }
+
+    async function loadSource(source) {
+      currentSource = source;
+
+      // Update switcher active state
+      document.querySelectorAll('.source-switcher button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.source === source);
+      });
+
+      // Destroy existing charts
+      for (const id of CHART_IDS) {
+        if (charts[id]) { charts[id].destroy(); charts[id] = null; }
+      }
+
+      const data = await (await fetch(`/api/stats/${source}`)).json();
+
+      document.getElementById('costNote').textContent =
+        data.costEstimated ? '* Cost estimated from token counts (Sonnet 4.5 pricing)' : '';
+
+      renderSummary(data.summary, data.costEstimated);
+      renderHeatmap(data.dailyActivity);
+      renderPunchcard(data.punchcard);
+      renderProjectCost(data.projectStats, data.costEstimated);
+      renderProjectMessages(data.projectStats);
+      renderCumulativeCost(data.dailyCost, data.costEstimated);
+      renderDailyTokens(data.dailyTokens);
+      renderDonut('modelUsage', data.modelUsage);
+
+      // Only show thinking levels for pi
+      const thinkingCard = document.getElementById('thinkingCard');
+      if (Object.keys(data.thinkingUsage).length > 0) {
+        thinkingCard.style.display = '';
+        renderDonut('thinkingUsage', data.thinkingUsage);
+      } else {
+        thinkingCard.style.display = 'none';
+      }
+    }
+
+    function renderSummary(s, costEstimated) {
+      const costLabel = costEstimated ? 'Est. cost' : 'Total cost';
+      const cards = [
+        { value: s.totalSessions, label: 'Sessions' },
+        { value: s.projects, label: 'Projects' },
+        { value: s.totalUserMessages, label: 'User messages' },
+        { value: s.totalMessages, label: 'Total messages' },
+        { value: '$' + s.totalCost.toFixed(2), label: costLabel },
+        { value: s.activeDays, label: 'Active days' },
+        { value: Math.round(s.totalDurationMinutes) + 'm', label: 'Total time' },
+      ];
+      document.getElementById('summary').innerHTML = cards.map(c =>
+        `<div class="summary-card"><div class="value">${c.value}</div><div class="label">${c.label}</div></div>`
+      ).join('');
+    }
+
+    function renderHeatmap(dailyActivity) {
+      const container = document.getElementById('heatmap-container');
+      const tooltip = document.getElementById('tooltip');
+
+      const endDate = new Date();
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 365);
+      startDate.setDate(startDate.getDate() - startDate.getDay());
+
+      const values = Object.values(dailyActivity);
+      const maxVal = Math.max(...values, 1);
+      const thresholds = [0, maxVal * 0.25, maxVal * 0.5, maxVal * 0.75];
+
+      function getLevel(count) {
+        if (!count) return 0;
+        if (count <= thresholds[1]) return 1;
+        if (count <= thresholds[2]) return 2;
+        if (count <= thresholds[3]) return 3;
+        return 4;
+      }
+
+      let html = '<div style="display:flex">';
+      html += '<div class="heatmap-labels">';
+      html += ['', 'Mon', '', 'Wed', '', 'Fri', ''].map(d => `<span>${d}</span>`).join('');
+      html += '</div>';
+      html += '<div class="heatmap">';
+
+      const cursor = new Date(startDate);
+      while (cursor <= endDate) {
+        html += '<div class="heatmap-week">';
+        for (let d = 0; d < 7; d++) {
+          const dateStr = cursor.toISOString().substring(0, 10);
+          const count = dailyActivity[dateStr] || 0;
+          const level = getLevel(count);
+          if (cursor <= endDate) {
+            html += `<div class="heatmap-cell" data-level="${level}" data-date="${dateStr}" data-count="${count}"></div>`;
+          } else {
+            html += '<div class="heatmap-cell" style="visibility:hidden"></div>';
+          }
+          cursor.setDate(cursor.getDate() + 1);
+        }
+        html += '</div>';
+      }
+
+      html += '</div></div>';
+      html += '<div class="heatmap-legend">Less ';
+      for (let i = 0; i <= 4; i++) html += `<div class="heatmap-cell" data-level="${i}"></div>`;
+      html += ' More</div>';
+
+      container.innerHTML = html;
+
+      container.addEventListener('mouseover', (e) => {
+        const cell = e.target.closest('.heatmap-cell[data-date]');
+        if (!cell) { tooltip.style.display = 'none'; return; }
+        tooltip.textContent = `${cell.dataset.count} message${cell.dataset.count !== '1' ? 's' : ''} on ${cell.dataset.date}`;
+        tooltip.style.display = 'block';
+      });
+      container.addEventListener('mousemove', (e) => {
+        tooltip.style.left = e.clientX + 12 + 'px';
+        tooltip.style.top = e.clientY - 30 + 'px';
+      });
+      container.addEventListener('mouseout', (e) => {
+        if (!e.target.closest('.heatmap-cell[data-date]')) tooltip.style.display = 'none';
+      });
+    }
+
+    function renderPunchcard(punchcard) {
+      const points = [];
+      for (let day = 0; day < 7; day++) {
+        for (let hour = 0; hour < 24; hour++) {
+          if (punchcard[day][hour] > 0) {
+            points.push({ x: hour, y: day, r: Math.sqrt(punchcard[day][hour]) * 4 + 2, count: punchcard[day][hour] });
+          }
+        }
+      }
+
+      charts.punchcard = new Chart(document.getElementById('punchcard'), {
+        type: 'bubble',
+        data: {
+          datasets: [{
+            data: points,
+            backgroundColor: 'rgba(0, 170, 255, 0.5)',
+            borderColor: 'rgba(0, 170, 255, 0.8)',
+            borderWidth: 1,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { label: (ctx) => `${DAYS[ctx.raw.y]} ${ctx.raw.x}:00 — ${ctx.raw.count} messages` }
+            }
+          },
+          scales: {
+            x: { min: -0.5, max: 23.5, ticks: { callback: (v) => v + ':00', stepSize: 3 }, grid: { color: '#21262d' }, title: { display: true, text: 'Hour of day' } },
+            y: { min: -0.5, max: 6.5, ticks: { callback: (v) => DAYS[v], stepSize: 1 }, grid: { color: '#21262d' }, reverse: true },
+          }
+        }
+      });
+    }
+
+    function renderProjectCost(projectStats, estimated) {
+      const sorted = Object.entries(projectStats).sort((a, b) => b[1].cost - a[1].cost);
+      const prefix = estimated ? '~$' : '$';
+      charts.projectCost = new Chart(document.getElementById('projectCost'), {
+        type: 'bar',
+        data: {
+          labels: sorted.map(([k]) => k),
+          datasets: [{
+            data: sorted.map(([, v]) => v.cost),
+            backgroundColor: 'rgba(0, 170, 255, 0.6)',
+            borderColor: 'rgba(0, 170, 255, 0.9)',
+            borderWidth: 1,
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          responsive: true,
+          indexAxis: 'y',
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (ctx) => prefix + ctx.raw.toFixed(2) } }
+          },
+          scales: {
+            x: { grid: { color: '#21262d' }, ticks: { callback: (v) => prefix + v.toFixed(2) } },
+            y: { grid: { display: false } },
+          }
+        }
+      });
+    }
+
+    function renderProjectMessages(projectStats) {
+      const sorted = Object.entries(projectStats).sort((a, b) => b[1].messages - a[1].messages);
+      charts.projectMessages = new Chart(document.getElementById('projectMessages'), {
+        type: 'bar',
+        data: {
+          labels: sorted.map(([k]) => k),
+          datasets: [
+            { label: 'User', data: sorted.map(([, v]) => v.userMessages), backgroundColor: 'rgba(0, 255, 255, 0.6)', borderRadius: 4 },
+            { label: 'Total', data: sorted.map(([, v]) => v.messages - v.userMessages), backgroundColor: 'rgba(0, 170, 255, 0.4)', borderRadius: 4 },
+          ]
+        },
+        options: {
+          responsive: true,
+          indexAxis: 'y',
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            x: { stacked: true, grid: { color: '#21262d' } },
+            y: { stacked: true, grid: { display: false } },
+          }
+        }
+      });
+    }
+
+    function renderCumulativeCost(dailyCost, estimated) {
+      const days = Object.keys(dailyCost).sort();
+      const prefix = estimated ? '~$' : '$';
+      let cumulative = 0;
+      const cumulativeData = days.map(d => { cumulative += dailyCost[d]; return cumulative; });
+
+      charts.cumulativeCost = new Chart(document.getElementById('cumulativeCost'), {
+        type: 'line',
+        data: {
+          labels: days,
+          datasets: [{
+            data: cumulativeData,
+            borderColor: '#00aaff',
+            backgroundColor: 'rgba(0, 170, 255, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: '#00aaff',
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (ctx) => prefix + ctx.raw.toFixed(2) } }
+          },
+          scales: {
+            x: { grid: { color: '#21262d' } },
+            y: { grid: { color: '#21262d' }, ticks: { callback: (v) => prefix + v.toFixed(2) } },
+          }
+        }
+      });
+    }
+
+    function renderDailyTokens(dailyTokens) {
+      const days = Object.keys(dailyTokens).sort();
+      charts.dailyTokens = new Chart(document.getElementById('dailyTokens'), {
+        type: 'bar',
+        data: {
+          labels: days,
+          datasets: [
+            { label: 'Output', data: days.map(d => dailyTokens[d].output), backgroundColor: 'rgba(0, 170, 255, 0.7)', borderRadius: 2 },
+            { label: 'Input', data: days.map(d => dailyTokens[d].input), backgroundColor: 'rgba(0, 255, 255, 0.5)', borderRadius: 2 },
+            { label: 'Cache Read', data: days.map(d => dailyTokens[d].cacheRead), backgroundColor: 'rgba(255, 170, 0, 0.5)', borderRadius: 2 },
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            x: { stacked: true, grid: { color: '#21262d' } },
+            y: {
+              stacked: true, grid: { color: '#21262d' },
+              ticks: { callback: (v) => v >= 1000000 ? (v/1000000).toFixed(1) + 'M' : v >= 1000 ? (v/1000).toFixed(0) + 'K' : v }
+            },
+          }
+        }
+      });
+    }
+
+    function renderDonut(canvasId, data) {
+      const labels = Object.keys(data);
+      const values = Object.values(data);
+      const colors = ['#00aaff', '#00ffff', '#ffaa00', '#ff00ff', '#00ff00', '#ff0000', '#ffdfdf'];
+
+      charts[canvasId] = new Chart(document.getElementById(canvasId), {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: colors.slice(0, labels.length),
+            borderColor: '#161b22',
+            borderWidth: 3,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom', labels: { padding: 16 } } },
+        }
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
