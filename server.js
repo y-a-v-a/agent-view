@@ -29,6 +29,73 @@ const TOKEN_COSTS = {
 
 app.use(express.static(path.join(__dirname, "public")));
 
+// --- Caching ---
+const CACHE_DIR = path.join(__dirname, ".cache");
+if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR);
+
+const memoryCache = {};
+
+function getSessionsFingerprint(sessionsDir) {
+  if (!fs.existsSync(sessionsDir)) return "empty";
+  let fileCount = 0;
+  let maxMtime = 0;
+  for (const projectDir of fs.readdirSync(sessionsDir)) {
+    const projectPath = path.join(sessionsDir, projectDir);
+    if (!fs.statSync(projectPath).isDirectory()) continue;
+    for (const file of fs.readdirSync(projectPath)) {
+      if (!file.endsWith(".jsonl")) continue;
+      fileCount++;
+      const mtime = fs.statSync(path.join(projectPath, file)).mtimeMs;
+      if (mtime > maxMtime) maxMtime = mtime;
+    }
+  }
+  return `${fileCount}:${maxMtime}`;
+}
+
+const FINGERPRINT_TTL_MS = 2000;
+
+function getCachedStats(source) {
+  // Skip fingerprint check if recently validated
+  const now = Date.now();
+  if (memoryCache[source] && (now - memoryCache[source].checkedAt) < FINGERPRINT_TTL_MS) {
+    return memoryCache[source].stats;
+  }
+
+  const sessionsDir = SOURCES[source].sessionsDir;
+  const fingerprint = getSessionsFingerprint(sessionsDir);
+
+  // Check memory cache
+  if (memoryCache[source] && memoryCache[source].fingerprint === fingerprint) {
+    memoryCache[source].checkedAt = now;
+    return memoryCache[source].stats;
+  }
+
+  // Check disk cache
+  const cacheFile = path.join(CACHE_DIR, `${source}.json`);
+  if (fs.existsSync(cacheFile)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+      if (cached.fingerprint === fingerprint) {
+        memoryCache[source] = { fingerprint, stats: cached.stats, checkedAt: Date.now() };
+        return cached.stats;
+      }
+    } catch {}
+  }
+
+  // Cache miss — parse fresh
+  const sessions = source === "pi" ? parsePiSessions() : parseClaudeSessions();
+  const stats = buildStats(sessions);
+  stats.source = source;
+  stats.sourceLabel = SOURCES[source].label;
+  stats.costEstimated = source === "claude";
+
+  // Write to disk and memory
+  memoryCache[source] = { fingerprint, stats, checkedAt: Date.now() };
+  fs.writeFileSync(cacheFile, JSON.stringify({ fingerprint, stats }));
+
+  return stats;
+}
+
 // Extract project name from encoded directory name
 // e.g. "--Users-vincentb-Sites-got--" -> "got"
 // e.g. "-Users-vincentb-Sites-openclaw-channel-cqlaw" -> "openclaw-channel-cqlaw"
@@ -248,12 +315,7 @@ app.get("/api/stats/:source", (req, res) => {
     return res.status(400).json({ error: "Source must be 'pi' or 'claude'" });
   }
   try {
-    const sessions = source === "pi" ? parsePiSessions() : parseClaudeSessions();
-    const stats = buildStats(sessions);
-    stats.source = source;
-    stats.sourceLabel = SOURCES[source].label;
-    stats.costEstimated = source === "claude";
-    res.json(stats);
+    res.json(getCachedStats(source));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
