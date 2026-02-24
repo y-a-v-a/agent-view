@@ -55,7 +55,7 @@ function parsePiSessions() {
     const files = fs.readdirSync(projectPath).filter((f) => f.endsWith(".jsonl"));
 
     for (const file of files) {
-      const lines = fs.readFileSync(path.join(projectPath, file), "utf8").trim().split("\n");
+      const lines = fs.readFileSync(path.join(projectPath, file), "utf8").trim().split("\n").filter((l) => l.length > 0);
       const events = lines.map((l) => JSON.parse(l));
 
       const sessionEvent = events.find((e) => e.type === "session");
@@ -110,7 +110,7 @@ function parseClaudeSessions() {
     const files = fs.readdirSync(projectPath).filter((f) => f.endsWith(".jsonl"));
 
     for (const file of files) {
-      const lines = fs.readFileSync(path.join(projectPath, file), "utf8").trim().split("\n");
+      const lines = fs.readFileSync(path.join(projectPath, file), "utf8").trim().split("\n").filter((l) => l.length > 0);
       const events = lines.map((l) => JSON.parse(l));
 
       // Filter real user messages (not meta, not commands)
