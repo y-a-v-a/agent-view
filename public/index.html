@@ -429,7 +429,7 @@
       for (let day = 0; day < 7; day++) {
         for (let hour = 0; hour < 24; hour++) {
           if (punchcard[day][hour] > 0) {
-            points.push({ x: hour, y: day, r: Math.sqrt(punchcard[day][hour]) * 4 + 2, count: punchcard[day][hour] });
+            points.push({ x: hour, y: day, r: Math.min(Math.sqrt(punchcard[day][hour]) * 1.5 + 2, 28), count: punchcard[day][hour] });
           }
         }
       }
