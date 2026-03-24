@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = 3000;
+const PORT = parseInt(process.env.AGENT_VIEW_PORT, 10) || 3001;
 const HOME = require("os").homedir();
 
 const SOURCES = {
@@ -123,7 +123,7 @@ function parsePiSessions() {
 
     for (const file of files) {
       const lines = fs.readFileSync(path.join(projectPath, file), "utf8").trim().split("\n").filter((l) => l.length > 0);
-      const events = lines.map((l) => JSON.parse(l));
+      const events = lines.flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
 
       const sessionEvent = events.find((e) => e.type === "session");
       const messages = events.filter((e) => e.type === "message");
@@ -178,7 +178,7 @@ function parseClaudeSessions() {
 
     for (const file of files) {
       const lines = fs.readFileSync(path.join(projectPath, file), "utf8").trim().split("\n").filter((l) => l.length > 0);
-      const events = lines.map((l) => JSON.parse(l));
+      const events = lines.flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
 
       // Filter real user messages (not meta, not commands)
       const userMessages = events.filter(
@@ -333,6 +333,14 @@ app.get("/api/sources", (req, res) => {
   res.json(available);
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`agent-view running at http://localhost:${PORT}`);
+});
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Error: Port ${PORT} is already in use. Set AGENT_VIEW_PORT to use a different port.`);
+    process.exit(1);
+  }
+  throw err;
 });
